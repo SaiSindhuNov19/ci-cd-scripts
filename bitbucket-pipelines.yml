@@ -1,1 +1,177 @@
+image:
+  name: 506450965294.dkr.ecr.us-east-2.amazonaws.com/test-cicd:3.0
+  aws:
+    access-key: $AWS_KEY
+    secret-key: $AWS_SECRET
 
+definitions:
+  services:
+    docker:
+      # max service mem for 1x is 3072, for 2x step is 7128
+      memory: 3072
+  caches:
+    pre-commit: 
+      key:
+       files:
+         - .pre-commit-config.yaml
+      path: $HOME/.cache/pre-commit
+    r:
+      key:
+        files:
+          - .pre-commit-config.yaml
+      path: $HOME/.cache/R/
+
+
+pipelines:
+  default:
+    - parallel:
+      - step:
+          name: Lint code
+          caches:
+            - pip
+            - pre-commit
+            - r
+          script:
+            - pre-commit run --all-files
+    - parallel:
+      - step:
+          name: Integration Tests Type1
+          size: 2x
+          script:
+            # config aws cli for accessing the base image
+            - git submodule update --init --recursive
+            - aws configure set aws_access_key_id "${AWS_KEY}"
+            - aws configure set aws_secret_access_key "${AWS_SECRET}"
+            - eval $(aws ecr get-login --no-include-email --region us-east-2 | sed 's;https://;;g')
+            # run nextflow pipeline with test profile
+            - nextflow run pipeline/main.nf -profile awsbatch,test_integration_type1
+            # build and test
+            - docker build -f dockerfiles/sequence-test/Dockerfile -t seq_test:latest ./
+            - >-
+              docker run --rm
+              -v $PWD/pipeline/results/small-type1/:/mnt/results
+              -v $PWD/tests/data/:/mnt/tests/data/
+              -v $PWD/test-reports:/mnt/test-reports/
+              seq_test:latest
+              python3 -m pytest tests/integration/general tests/integration/TYPE1 tests/integration/Type1 tests/integration/general_type1
+              --junitxml=/mnt/test-reports/junit.xml
+              --results_dir /mnt/results/
+              --test_data /mnt/tests/data/
+          artifacts:
+            - pipeline/results/small-type1/**
+            - pipeline/results/small-type1/pipeline_info/**
+            - .nextflow.log
+          services:
+            - docker
+      - step:
+          name: Integration Tests Type1 single end
+          size: 2x
+          script:
+            # config aws cli for accessing the base image
+            - git submodule update --init --recursive
+            - aws configure set aws_access_key_id "${AWS_KEY}"
+            - aws configure set aws_secret_access_key "${AWS_SECRET}"
+            - eval $(aws ecr get-login --no-include-email --region us-east-2 | sed 's;https://;;g')
+            # run nextflow pipeline with test profile
+            - nextflow run pipeline/main.nf -profile awsbatch,test_integration_type1_single_end
+            # build and test
+            - docker build -f dockerfiles/sequence-test/Dockerfile -t seq_test:latest ./
+            - >-
+              docker run --rm
+              -v $PWD/pipeline/results/Ens-Grad-1000/:/mnt/results
+              -v $PWD/tests/data/:/mnt/tests/data/
+              -v $PWD/test-reports:/mnt/test-reports/
+              seq_test:latest
+              python3 -m pytest tests/integration/general tests/integration/Type1_single_end
+              --junitxml=/mnt/test-reports/junit.xml
+              --results_dir /mnt/results/
+              --test_data /mnt/tests/data/
+          artifacts:
+            - pipeline/results/Ens-Grad-1000/**
+            - pipeline/results/Ens-Grad-1000/pipeline_info/**
+            - .nextflow.log
+          services:
+            - docker
+      - step:
+          name: Integration Tests Type2
+          size: 2x
+          script:
+            # config aws cli for accessing the base image
+            - git submodule update --init --recursive
+            - aws configure set aws_access_key_id "${AWS_KEY}"
+            - aws configure set aws_secret_access_key "${AWS_SECRET}"
+            - eval $(aws ecr get-login --no-include-email --region us-east-2 | sed 's;https://;;g')
+            # run nextflow pipeline with test profile
+            - nextflow run pipeline/main.nf -profile awsbatch,test_integration_type2
+            # build and test
+            - docker build -f dockerfiles/sequence-test/Dockerfile -t seq_test:latest ./
+            - >-
+              docker run --rm
+              -v $PWD/pipeline/results/small-type2/:/mnt/results
+              -v $PWD/test-reports:/mnt/test-reports/
+              seq_test:latest
+              python3 -m pytest tests/integration/Type2
+              --junitxml=/mnt/test-reports/junit.xml
+              --results_dir /mnt/results/
+          artifacts:
+            - pipeline/results/small-type2/**
+            - pipeline/results/small-type2/pipeline_info/**
+            - .nextflow.log
+          services:
+            - docker
+      - step:
+          name: Integration Tests 10X
+          size: 2x
+          script:
+            # config aws cli for accessing the base image
+            - git submodule update --init --recursive
+            - aws configure set aws_access_key_id "${AWS_KEY}"
+            - aws configure set aws_secret_access_key "${AWS_SECRET}"
+            - eval $(aws ecr get-login --no-include-email --region us-east-2 | sed 's;https://;;g')
+            # run nextflow pipeline with test_10x profile and awsbatch
+            - nextflow run pipeline/main.nf -profile test_integration_10x,awsbatch
+            # build and test
+            - docker build -f dockerfiles/sequence-test/Dockerfile -t seq_test:latest ./
+            - >-
+              docker run --rm
+              -v $PWD/pipeline/results/10x_cicd/:/mnt/results
+              -v $PWD/test-reports:/mnt/test-reports/
+              seq_test:latest
+              python3 -m pytest tests/integration/general tests/integration/10x
+              --junitxml=/mnt/test-reports/junit.xml
+              --results_dir /mnt/results/
+          artifacts:
+            - pipeline/results/10x_cicd/**
+            - pipeline/results/10x_cicd/pipeline_info/**
+            - .nextflow.log
+          services:
+            - docker
+      - step:
+          name: Integration Tests Unproductive reads
+          size: 2x
+          script:
+            # config aws cli for accessing the base image
+            - git submodule update --init --recursive
+            - aws configure set aws_access_key_id "${AWS_KEY}"
+            - aws configure set aws_secret_access_key "${AWS_SECRET}"
+            - eval $(aws ecr get-login --no-include-email --region us-east-2 | sed 's;https://;;g')
+            # run nextflow pipeline with test profile
+            - nextflow run pipeline/main.nf -profile awsbatch,test_integration_type1_unproductive_reads
+            # build and test
+            - docker build -f dockerfiles/sequence-test/Dockerfile -t seq_test:latest ./
+            - >-
+              docker run --rm
+              -v $PWD/pipeline/results/unprod-reads-type1/:/mnt/results
+              -v $PWD/tests/data/:/mnt/tests/data/
+              -v $PWD/test-reports:/mnt/test-reports/
+              seq_test:latest
+              python3 -m pytest tests/integration/Type1_unproductive_reads
+              --junitxml=/mnt/test-reports/junit.xml
+              --results_dir /mnt/results/
+              --test_data /mnt/tests/data/
+          artifacts:
+            - pipeline/results/unprod-reads-type1/**
+            - pipeline/results/unprod-reads-type1/pipeline_info/**
+            - .nextflow.log
+          services:
+            - docker
